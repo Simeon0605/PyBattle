@@ -1,0 +1,256 @@
+@import "tailwindcss";
+
+/* ============================================================
+   PYCLASH — PIXEL-CYBERCORE
+   hell, flach, kantig. keine rundungen, keine schatten.
+   ============================================================ */
+
+:root {
+  --paper: #f5f5f5;
+  --paper-alt: #e8e8e8;
+  --ink: #111111;
+  --accent: #3b1fe0;
+  --pink: #ff4fa3;
+  --signal: #ff2a1f;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-alt: var(--paper-alt);
+  --color-ink: var(--ink);
+  --color-accent: var(--accent);
+  --color-pink: var(--pink);
+  --color-signal: var(--signal);
+  --font-pixel: var(--font-pixel), monospace;
+  --font-wide: var(--font-wide), sans-serif;
+  --font-mono: var(--font-space-mono), monospace;
+  --radius-none: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-space-mono), monospace;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  overflow-wrap: break-word;
+}
+
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+.field:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn:active {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: #fff;
+}
+
+h1,
+h2,
+h3 {
+  text-transform: none;
+}
+
+/* ---------- kernklassen ---------- */
+
+.font-pixel {
+  font-family: var(--font-pixel), monospace;
+  text-transform: uppercase;
+}
+
+.font-wide {
+  font-family: var(--font-wide), sans-serif;
+  text-transform: lowercase;
+}
+
+.btn {
+  display: inline-block;
+  border: 1px solid var(--ink);
+  padding: 12px 20px;
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-align: center;
+  cursor: pointer;
+  transition: none;
+}
+
+.btn-pink {
+  background: var(--pink);
+  color: var(--ink);
+}
+.btn-pink:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.btn-black {
+  background: var(--ink);
+  color: var(--paper);
+}
+.btn-black:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.btn-line {
+  background: transparent;
+  color: var(--ink);
+}
+.btn-line:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.panel {
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+
+.panel-alt {
+  background: var(--paper-alt);
+}
+
+.field {
+  width: 100%;
+  max-width: 100%;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  padding: 12px;
+  font-family: var(--font-space-mono), monospace;
+  font-size: 16px;
+  outline: none;
+  border-radius: 0;
+}
+.field:focus {
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+.kicker {
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.sigil {
+  color: var(--signal);
+}
+
+.link-pink {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--pink);
+  text-underline-offset: 3px;
+}
+.link-pink:hover {
+  background: var(--accent);
+  color: #fff;
+  text-decoration-color: transparent;
+}
+
+/* chamfered tech panel */
+.chamfer {
+  clip-path: polygon(
+    0 0,
+    calc(100% - 18px) 0,
+    100% 18px,
+    100% 100%,
+    18px 100%,
+    0 calc(100% - 18px)
+  );
+}
+
+/* crosshair marks */
+.mark {
+  position: relative;
+  width: 12px;
+  height: 12px;
+}
+.mark::before,
+.mark::after {
+  content: "";
+  position: absolute;
+  background: var(--ink);
+}
+.mark::before {
+  width: 12px;
+  height: 1px;
+  top: 6px;
+}
+.mark::after {
+  width: 1px;
+  height: 12px;
+  left: 6px;
+}
+
+/* ticker */
+@keyframes tick {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+.ticker {
+  overflow: hidden;
+  white-space: nowrap;
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+  background: var(--paper-alt);
+}
+.ticker-row {
+  display: inline-block;
+  font-size: 10px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  padding: 6px 0;
+  animation: tick 30s linear infinite;
+}
+
+/* blinkender cursor */
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+.cursor-block {
+  display: inline-block;
+  background: var(--paper);
+  color: var(--ink);
+  animation: blink 1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-row,
+  .cursor-block {
+    animation: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
