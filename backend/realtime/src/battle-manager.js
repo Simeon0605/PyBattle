@@ -161,6 +161,15 @@ export class BattleManager {
     return { winnerId, elo };
   }
 
+  async forfeit(userId) {
+    const battle = this.matches.get(userId);
+    if (!battle || battle.players[userId].finished) return { error: "Kein aktives Match" };
+    // Aufgeben = automatische Niederlage, Sieger ist der Gegner
+    const opponentId = Object.keys(battle.players).find((id) => id !== userId);
+    await this.finish(battle, opponentId);
+    return { forfeited: true };
+  }
+
   async finishByTimeout(battle) {
     const [p1, p2] = Object.values(battle.players);
     const winner = p1.progress >= p2.progress ? p1.id : p2.id;

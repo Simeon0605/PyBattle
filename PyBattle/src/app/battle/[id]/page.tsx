@@ -19,6 +19,8 @@ function Arena() {
   const [log, setLog] = useState<string[]>([]);
   const [over, setOver] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [forfeitArmed, setForfeitArmed] = useState(false);
+  const [command, setCommand] = useState("");
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 250);
@@ -103,6 +105,41 @@ function Arena() {
     setOver(`SIEG GEGEN ${match.opponent.username} (${change >= 0 ? "+" : ""}${change} ELO)`);
   }
 
+  // Aufgeben (/ff, /forfeit, /aufgeben) = automatische Niederlage mit ELO-Abzug
+  async function forfeit() {
+    if (!match || over) return;
+    if (!forfeitArmed) {
+      setForfeitArmed(true);
+      setLog((l) => [...l, "AUFGEBEN? NOCHMAL BESTÄTIGEN (ODER /FF)"]);
+      return;
+    }
+    setForfeitArmed(false);
+    const res = await api.post<{ elo_change: number }>("/api/battle/forfeit", {
+      match_id: match.id,
+      opponent: match.opponent.username,
+      problem_title: match.problem.title,
+      duration_ms: elapsed,
+    });
+    if (!res.success) {
+      setLog((l) => [...l, res.error]);
+      return;
+    }
+    const change = res.data.elo_change;
+    setOver(`AUFGEGEBEN GEGEN ${match.opponent.username} (${change >= 0 ? "+" : ""}${change} ELO)`);
+  }
+
+  function onCommand(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const cmd = command.trim().toLowerCase();
+    setCommand("");
+    if (!cmd) return;
+    if (cmd === "/ff" || cmd === "/forfeit" || cmd === "/aufgeben") {
+      void forfeit();
+      return;
+    }
+    setLog((l) => [...l, `UNBEKANNTER BEFEHL: ${cmd} (VERFÜGBAR: /FF)`]);
+  }
+
   return (
     <main className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-8 lg:grid-cols-[1fr_280px]">
       <div>
@@ -121,13 +158,25 @@ function Arena() {
           <p className="font-pixel text-lg text-accent">{formatDuration(left)}</p>
         </div>
         <CodeEditor value={code} onChange={setCode} />
-        <button
-          disabled={pending || Boolean(over) || left <= 0}
-          onClick={() => void submit()}
-          className="btn btn-pink mt-4"
-        >
-          {pending ? "SUBMIT…" : "LÖSUNG SENDEN_"}
-        </button>
+        <div className="mt-4 flex gap-3">
+          <button
+            disabled={pending || Boolean(over) || left <= 0}
+            onClick={() => void submit()}
+            className="btn btn-pink flex-1"
+          >
+            {pending ? "SUBMIT…" : "LÖSUNG SENDEN_"}
+          </button>
+          <button
+            disabled={Boolean(over) || left <= 0}
+            onClick={() => void forfeit()}
+            className={`btn shrink-0 px-4 ${
+              forfeitArmed ? "bg-signal text-white" : "btn-line"
+            }`}
+            aria-label="Match aufgeben"
+          >
+            {forfeitArmed ? "WIRKLICH?" : "AUFGEBEN_"}
+          </button>
+        </div>
         {over ? (
           <p className="mt-4 text-xs tracking-[0.2em] text-accent">✱ {over}</p>
         ) : null}
@@ -146,6 +195,21 @@ function Arena() {
             </p>
           ))}
         </div>
+        {!over ? (
+          <form className="mt-6" onSubmit={onCommand}>
+            <label className="block text-[10px] tracking-[0.25em] text-ink opacity-70">
+              BEFEHL
+              <input
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+                className="field mt-2 text-xs"
+                placeholder="/FF"
+                autoComplete="off"
+                aria-label="Battle-Befehl, z. B. /ff zum Aufgeben"
+              />
+            </label>
+          </form>
+        ) : null}
       </Panel>
     </main>
   );

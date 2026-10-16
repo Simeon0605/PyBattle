@@ -58,6 +58,16 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("battle:forfeit", async (_payload, cb) => {
+    try {
+      const result = await manager.forfeit(socket.user.id);
+      cb?.({ success: !result.error, ...(result.error ? { error: result.error } : { data: result }) });
+    } catch (err) {
+      console.error(err);
+      cb?.({ success: false, error: "Aufgeben fehlgeschlagen" });
+    }
+  });
+
   socket.on("disconnect", () => {
     manager.leave(socket.user.id).catch(console.error);
   });

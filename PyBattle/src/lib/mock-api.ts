@@ -1,6 +1,7 @@
 import type {
   ApiResponse,
   BattleMatch,
+  Difficulty,
   LeaderboardEntry,
   MatchHistoryItem,
   Problem,
@@ -37,73 +38,123 @@ const DB_KEY = "pyclash_mock_db";
 const MIN_MS = 5_000;
 const MAX_MS = 15 * 60 * 1000;
 
-const PROBLEMS: Problem[] = [
-  {
-    id: "11111111-1111-1111-1111-111111111111",
-    title: "Two Sum",
-    difficulty: "easy",
-    test_case_count: 6,
-    solved: false,
-    best_score: null,
-    description:
-      "Gegeben ein Array `nums` und ein Ziel `target`, gib die Indizes zweier Zahlen zurück, die zusammen `target` ergeben.\n\nDu darfst dasselbe Element nicht zweimal verwenden. Es gibt genau eine Lösung.",
-    starter_code: `def two_sum(nums, target):\n    # TODO: Indizes zurückgeben\n    pass\n`,
-    example_input: "nums = [2, 7, 11, 15], target = 9",
-    example_output: "[0, 1]",
-  },
-  {
-    id: "22222222-2222-2222-2222-222222222222",
-    title: "Valid Parentheses",
-    difficulty: "easy",
-    test_case_count: 8,
-    solved: false,
-    best_score: null,
-    description:
-      "Prüfe, ob ein String aus Klammern `()[]{}` gültig ist.\n\nGültig heißt: jede öffnende Klammer hat eine schließende in der richtigen Reihenfolge.",
-    starter_code: `def is_valid(s):\n    # TODO: True/False zurückgeben\n    pass\n`,
-    example_input: 's = "()[]{}"',
-    example_output: "True",
-  },
-  {
-    id: "33333333-3333-3333-3333-333333333333",
-    title: "Longest Substring",
-    difficulty: "medium",
-    test_case_count: 7,
-    solved: false,
-    best_score: null,
-    description:
-      "Finde die Länge der längsten Teilzeichenkette ohne wiederholte Zeichen.",
-    starter_code: `def length_of_longest_substring(s):\n    # TODO: Länge zurückgeben\n    pass\n`,
-    example_input: 's = "abcabcbb"',
-    example_output: "3",
-  },
-  {
-    id: "44444444-4444-4444-4444-444444444444",
-    title: "Merge Intervals",
-    difficulty: "medium",
-    test_case_count: 5,
-    solved: false,
-    best_score: null,
-    description:
-      "Gegeben Intervalle `[start, end]`, merge alle überlappenden Intervalle und gib die nicht-überlappenden zurück.",
-    starter_code: `def merge(intervals):\n    # TODO: gemergte Intervalle\n    pass\n`,
-    example_input: "intervals = [[1,3],[2,6],[8,10],[15,18]]",
-    example_output: "[[1,6],[8,10],[15,18]]",
-  },
-  {
-    id: "55555555-5555-5555-5555-555555555555",
-    title: "Word Search",
-    difficulty: "hard",
-    test_case_count: 9,
-    solved: false,
-    best_score: null,
-    description:
-      "Ein 2D-Board aus Buchstaben. Existiert das Wort durch aufeinanderfolgende Nachbarzellen (horizontal/vertikal)? Jede Zelle darf nur einmal genutzt werden.",
-    starter_code: `def exist(board, word):\n    # TODO: True/False\n    pass\n`,
-    example_input: 'board = [["A","B","C","E"],["S","F","C","S"],["A","D","E","E"]], word = "ABCCED"',
-    example_output: "True",
-  },
+type ProblemSeed = {
+  id: string;
+  title: string;
+  difficulty: Difficulty;
+  test_case_count: number;
+  description: string;
+  starter_code: string;
+  example_input: string;
+  example_output: string;
+};
+
+// Die ersten 25 LeetCode-Probleme – identisch mit supabase/schema.sql
+// (gleiche IDs), damit Mock- und Echt-Modus dasselbe Problem-Set zeigen.
+const SEEDS: ProblemSeed[] = [
+  { id: "00000000-0000-4000-8000-000000000001", title: "Two Sum", difficulty: "easy", test_case_count: 4,
+    description: "Gegeben ein Array `nums` und ein Ziel `target`, gib die Indizes zweier Zahlen zurück, die zusammen `target` ergeben.\n\nDu darfst dasselbe Element nicht zweimal verwenden. Es gibt genau eine Lösung.",
+    starter_code: "def two_sum(nums, target):\n    # TODO: Indizes zurückgeben\n    pass\n",
+    example_input: "nums = [2, 7, 11, 15], target = 9", example_output: "[0, 1]" },
+  { id: "00000000-0000-4000-8000-000000000002", title: "Add Two Numbers", difficulty: "medium", test_case_count: 4,
+    description: "Zwei Zahlen sind als Arrays von Ziffern gegeben (kleinste Stelle zuerst). Beispiel: [2,4,3] steht für 342.\n\nGib die Summe beider Zahlen im selben Format zurück: [2,4,3] + [5,6,4] = [7,0,8], weil 342 + 465 = 807.",
+    starter_code: "def add_two_numbers(a, b):\n    # TODO: Summe als Ziffern-Array (kleinste Stelle zuerst)\n    pass\n",
+    example_input: "a = [2, 4, 3], b = [5, 6, 4]", example_output: "[7, 0, 8]" },
+  { id: "00000000-0000-4000-8000-000000000003", title: "Longest Substring Without Repeating Characters", difficulty: "medium", test_case_count: 6,
+    description: "Finde die Länge der längsten Teilzeichenkette ohne wiederholte Zeichen.",
+    starter_code: "def length_of_longest_substring(s):\n    # TODO: Länge zurückgeben\n    pass\n",
+    example_input: 's = "abcabcbb"', example_output: "3" },
+  { id: "00000000-0000-4000-8000-000000000004", title: "Median of Two Sorted Arrays", difficulty: "hard", test_case_count: 4,
+    description: "Gib den Median der beiden sortierten Arrays zurück – als Float (z. B. 2.0 oder 2.5).\n\nDie optimale Laufzeit ist O(log(m+n)); korrekt ist aber auch ein einfacher Merge.",
+    starter_code: "def find_median_sorted_arrays(nums1, nums2):\n    # TODO: Median als Float zurückgeben\n    pass\n",
+    example_input: "nums1 = [1, 3], nums2 = [2]", example_output: "2.0" },
+  { id: "00000000-0000-4000-8000-000000000005", title: "Longest Palindromic Substring", difficulty: "medium", test_case_count: 4,
+    description: "Gib die längste Teilzeichenkette von s zurück, die ein Palindrom ist. Bei mehreren längsten Palindromen gib die erste (linkeste) zurück.",
+    starter_code: "def longest_palindrome(s):\n    # TODO: längstes Palindrom zurückgeben\n    pass\n",
+    example_input: 's = "babad"', example_output: '"bab"' },
+  { id: "00000000-0000-4000-8000-000000000006", title: "Zigzag Conversion", difficulty: "medium", test_case_count: 4,
+    description: "Schreibe die Zeichen von s zeilenweise in ein Zigzag-Muster mit num_rows Zeilen und lies das Ergebnis dann Zeile für Zeile.\n\nBeispiel: PAYPALISHIRING mit 3 Zeilen:\nP   A   H   N\nA P L S I I G\nY   I   R\nErgebnis: PAHNAPLSIIGYIR",
+    starter_code: "def convert(s, num_rows):\n    # TODO: Zigzag-Ergebnis zurückgeben\n    pass\n",
+    example_input: 's = "PAYPALISHIRING", num_rows = 3', example_output: '"PAHNAPLSIIGYIR"' },
+  { id: "00000000-0000-4000-8000-000000000007", title: "Reverse Integer", difficulty: "medium", test_case_count: 4,
+    description: "Drehe die Ziffern einer 32-Bit-Ganzzahl um. Vorzeichen bleiben erhalten.\n\nLäuft das Ergebnis über den 32-Bit-Bereich [-2147483648, 2147483647], gib 0 zurück.",
+    starter_code: "def reverse(x):\n    # TODO: umgedrehte 32-Bit-Ganzzahl\n    pass\n",
+    example_input: "x = 123", example_output: "321" },
+  { id: "00000000-0000-4000-8000-000000000008", title: "String to Integer (atoi)", difficulty: "medium", test_case_count: 4,
+    description: "Implementiere String-zu-Integer (atoi): Überspringe führende Leerzeichen, lies ein optionales Vorzeichen und danach alle Ziffern.\n\nBei Überlauf clampe auf 2147483647 bzw. -2147483648. Steht vor den Ziffern etwas anderes als Leerzeichen/Vorzeichen, ist das Ergebnis 0.",
+    starter_code: "def my_atoi(s):\n    # TODO: geparste Ganzzahl\n    pass\n",
+    example_input: 's = "42"', example_output: "42" },
+  { id: "00000000-0000-4000-8000-000000000009", title: "Palindrome Number", difficulty: "easy", test_case_count: 4,
+    description: "Prüfe, ob eine Ganzzahl ein Palindrom ist (vorwärts wie rückwärts gleich). Negative Zahlen sind keine Palindrome. Rückgabe True/False.",
+    starter_code: "def is_palindrome(x):\n    # TODO: True/False\n    pass\n",
+    example_input: "x = 121", example_output: "true" },
+  { id: "00000000-0000-4000-8000-000000000010", title: "Regular Expression Matching", difficulty: "hard", test_case_count: 4,
+    description: "Implementiere Regex-Matching mit Unterstützung für Punkt und Stern:\nDer Punkt trifft genau ein beliebiges Zeichen.\nDer Stern trifft null oder mehr des vorherigen Zeichens.\n\nDer Match muss die gesamte Zeichenkette s umfassen. Rückgabe True/False.",
+    starter_code: "def is_match(s, p):\n    # TODO: True/False\n    pass\n",
+    example_input: 's = "aa", p = "a*"', example_output: "true" },
+  { id: "00000000-0000-4000-8000-000000000011", title: "Container With Most Water", difficulty: "medium", test_case_count: 3,
+    description: "Gegeben ein Array height, wobei height[i] die Höhe einer Wand an Position i ist. Wähle zwei Wände so, dass der Behälter das meiste Wasser fasst.\n\nDie Fläche ist min(height[i], height[j]) multipliziert mit dem Abstand (j - i). Gib die maximale Fläche zurück.",
+    starter_code: "def max_area(height):\n    # TODO: maximale Fläche\n    pass\n",
+    example_input: "height = [1, 8, 6, 2, 5, 4, 8, 3, 7]", example_output: "49" },
+  { id: "00000000-0000-4000-8000-000000000012", title: "Integer to Roman", difficulty: "medium", test_case_count: 3,
+    description: "Wandle eine Zahl (1-3999) in eine römische Zahl um. Verwende die Symbole I, V, X, L, C, D, M inklusive Subtraktionsform (IV, IX, XL, XC, CD, CM).",
+    starter_code: "def int_to_roman(num):\n    # TODO: römische Zahl als String\n    pass\n",
+    example_input: "num = 1994", example_output: '"MCMXCIV"' },
+  { id: "00000000-0000-4000-8000-000000000013", title: "Roman to Integer", difficulty: "easy", test_case_count: 3,
+    description: "Wandle eine römische Zahl (I, V, X, L, C, D, M inklusive Subtraktionsform) in eine Ganzzahl um.",
+    starter_code: "def roman_to_int(s):\n    # TODO: Ganzzahl\n    pass\n",
+    example_input: 's = "MCMXCIV"', example_output: "1994" },
+  { id: "00000000-0000-4000-8000-000000000014", title: "Longest Common Prefix", difficulty: "easy", test_case_count: 3,
+    description: "Finde den längsten gemeinsamen Präfix aller Strings im Array strs. Gibt es keinen, gib einen leeren String zurück.",
+    starter_code: "def longest_common_prefix(strs):\n    # TODO: längster gemeinsamer Präfix\n    pass\n",
+    example_input: 'strs = ["flower", "flow", "flight"]', example_output: '"fl"' },
+  { id: "00000000-0000-4000-8000-000000000015", title: "3Sum", difficulty: "medium", test_case_count: 3,
+    description: "Gib alle eindeutigen Triplets [a, b, c] aus nums zurück, deren Summe 0 ist.\n\nSortiere jedes Triplet aufsteigend und die Ergebnisliste lexikografisch. Kein Triplet darf doppelt vorkommen.",
+    starter_code: "def three_sum(nums):\n    # TODO: sortierte Triplets\n    pass\n",
+    example_input: "nums = [-1, 0, 1, 2, -1, -4]", example_output: "[[-1, -1, 2], [-1, 0, 1]]" },
+  { id: "00000000-0000-4000-8000-000000000016", title: "3Sum Closest", difficulty: "medium", test_case_count: 3,
+    description: "Finde die Summe von drei Zahlen aus nums, die der Zielzahl target am nächsten liegt. Es gibt genau eine nächstliegende Summe. Rückgabe: die Summe als Ganzzahl.",
+    starter_code: "def three_sum_closest(nums, target):\n    # TODO: nächstliegende Summe\n    pass\n",
+    example_input: "nums = [-1, 2, 1, -4], target = 1", example_output: "2" },
+  { id: "00000000-0000-4000-8000-000000000017", title: "Letter Combinations of a Phone Number", difficulty: "medium", test_case_count: 3,
+    description: "Gib alle möglichen Buchstabenkombinationen zurück, die die Ziffern digits (2-9) auf einer Telefontastatur repräsentieren.\n\nBelegung je Taste: 2=abc, 3=def, 4=ghi, 5=jkl, 6=mno, 7=pqrs, 8=tuv, 9=wxyz. Kombiniere in der Reihenfolge der Ziffern und Buchstaben. Bei leerem Input: leere Liste.",
+    starter_code: "def letter_combinations(digits):\n    # TODO: Buchstabenkombinationen\n    pass\n",
+    example_input: 'digits = "23"', example_output: '["ad", "ae", "af", "bd", "be", "bf", "cd", "ce", "cf"]' },
+  { id: "00000000-0000-4000-8000-000000000018", title: "4Sum", difficulty: "medium", test_case_count: 2,
+    description: "Gib alle eindeutigen Quadruplets [a, b, c, d] aus nums zurück, deren Summe target ist.\n\nSortiere jedes Quadruplet aufsteigend und die Ergebnisliste lexikografisch. Kein Quadruplet darf doppelt vorkommen.",
+    starter_code: "def four_sum(nums, target):\n    # TODO: sortierte Quadruplets\n    pass\n",
+    example_input: "nums = [1, 0, -1, 0, -2, 2], target = 0", example_output: "[[-2, -1, 1, 2], [-2, 0, 0, 2], [-1, 0, 0, 1]]" },
+  { id: "00000000-0000-4000-8000-000000000019", title: "Remove Nth Node From End of List", difficulty: "medium", test_case_count: 4,
+    description: "Die Liste ist als Array gegeben. Entferne das n-te Element von hinten und gib die Liste als Array zurück. In einem Durchlauf möglich (n = Listenlänge ist erlaubt).",
+    starter_code: "def remove_nth_from_end(head, n):\n    # TODO: Liste ohne n-tes Element von hinten\n    pass\n",
+    example_input: "head = [1, 2, 3, 4, 5], n = 2", example_output: "[1, 2, 3, 5]" },
+  { id: "00000000-0000-4000-8000-000000000020", title: "Valid Parentheses", difficulty: "easy", test_case_count: 6,
+    description: "Prüfe, ob ein String aus Klammern ()[]{} gültig ist.\n\nGültig heißt: jede öffnende Klammer hat eine schließende in der richtigen Reihenfolge. Rückgabe True/False.",
+    starter_code: "def is_valid(s):\n    # TODO: True/False\n    pass\n",
+    example_input: 's = "()[]{}"', example_output: "true" },
+  { id: "00000000-0000-4000-8000-000000000021", title: "Merge Two Sorted Lists", difficulty: "easy", test_case_count: 3,
+    description: "Zwei sortierte Listen sind als Arrays gegeben. Mische sie zu einer sortierten Liste und gib sie als Array zurück.",
+    starter_code: "def merge_two_lists(a, b):\n    # TODO: gemischte sortierte Liste\n    pass\n",
+    example_input: "a = [1, 2, 4], b = [1, 3, 4]", example_output: "[1, 1, 2, 3, 4, 4]" },
+  { id: "00000000-0000-4000-8000-000000000022", title: "Generate Parentheses", difficulty: "medium", test_case_count: 3,
+    description: "Gib für n Paare alle gültigen Kombinationen gut formatierter Klammern zurück – in der Reihenfolge, die entsteht, wenn pro Schritt zuerst eine öffnende und dann eine schließende Klammer probiert wird.",
+    starter_code: "def generate_parenthesis(n):\n    # TODO: gültige Kombinationen\n    pass\n",
+    example_input: "n = 3", example_output: '["((()))", "(()())", "(())()", "()(())", "()()()"]' },
+  { id: "00000000-0000-4000-8000-000000000023", title: "Merge k Sorted Lists", difficulty: "hard", test_case_count: 3,
+    description: "Gegeben ein Array aus sortierten Arrays, mische alle zu einem sortierten Array.",
+    starter_code: "def merge_k_lists(lists):\n    # TODO: gemischtes sortiertes Array\n    pass\n",
+    example_input: "lists = [[1, 4, 5], [1, 3, 4], [2, 6]]", example_output: "[1, 1, 2, 3, 4, 4, 5, 6]" },
+  { id: "00000000-0000-4000-8000-000000000024", title: "Swap Nodes in Pairs", difficulty: "medium", test_case_count: 4,
+    description: "Die Liste ist als Array gegeben. Tausche benachbarte Elemente paarweise (1. mit 2., 3. mit 4., ...) und gib die Liste zurück. Ein einzelnes letztes Element bleibt stehen.",
+    starter_code: "def swap_pairs(head):\n    # TODO: paarweise getauschte Liste\n    pass\n",
+    example_input: "head = [1, 2, 3, 4]", example_output: "[2, 1, 4, 3]" },
+  { id: "00000000-0000-4000-8000-000000000025", title: "Reverse Nodes in k-Group", difficulty: "hard", test_case_count: 4,
+    description: "Die Liste ist als Array gegeben. Drehe die Elemente in Gruppen von k um. Bleibt am Ende eine unvollständige Gruppe, bleibt sie unverändert. Gib die Liste als Array zurück.",
+    starter_code: "def reverse_k_group(head, k):\n    # TODO: in k-Gruppen umgedrehte Liste\n    pass\n",
+    example_input: "head = [1, 2, 3, 4, 5], k = 2", example_output: "[2, 1, 4, 3, 5]" },
 ];
+
+const PROBLEMS: Problem[] = SEEDS.map((s) => ({ ...s, solved: false, best_score: null }));
 
 const BOT_USERS: StoredUser[] = [
   demoUser("nova", 1420, 12),
@@ -506,9 +557,10 @@ export async function mockRequest(
     const user = authUser(headers);
     if (!user) return fail("Nicht eingeloggt", 401);
     const db = loadDb();
+    const target = db.users.find((u) => u.id === user.id);
     const win = Boolean(json.win);
     const change = win ? 18 : -18;
-    user.elo += change;
+    if (target) target.elo += change;
     const item: MatchHistoryItem = {
       id: crypto.randomUUID(),
       opponent: String(json.opponent ?? "unknown"),
@@ -520,7 +572,29 @@ export async function mockRequest(
     };
     db.matches.unshift(item);
     saveDb(db);
-    return ok({ elo: user.elo, elo_change: change, result: item.result });
+    return ok({ elo: target?.elo ?? user.elo, elo_change: change, result: item.result });
+  }
+
+  if (path === "/api/battle/forfeit" && method === "POST") {
+    const user = authUser(headers);
+    if (!user) return fail("Nicht eingeloggt", 401);
+    const db = loadDb();
+    const target = db.users.find((u) => u.id === user.id);
+    // Aufgeben = automatische Niederlage mit ELO-Abzug
+    const change = -18;
+    if (target) target.elo += change;
+    const item: MatchHistoryItem = {
+      id: crypto.randomUUID(),
+      opponent: String(json.opponent ?? "unknown"),
+      problem_title: String(json.problem_title ?? "Battle"),
+      result: "loss",
+      duration_ms: Number(json.duration_ms ?? 0),
+      elo_change: change,
+      finished_at: new Date().toISOString(),
+    };
+    db.matches.unshift(item);
+    saveDb(db);
+    return ok({ forfeited: true, elo_change: change });
   }
 
   if (path === "/api/leaderboard" && method === "GET") {
