@@ -44,6 +44,7 @@ Antwortformat immer `{ success: true, data }` / `{ success: false, error }`.
 | POST | `/api/battle/queue` | 🔒 Matchmaking-Queue beitreten |
 | GET | `/api/battle/history` | 🔒 Vergangene Matches |
 | POST | `/api/battle/finish` | 🔒 Match per REST abschließen (Fallback ohne Socket) |
+| POST | `/api/battle/forfeit` | 🔒 Match aufgeben – zählt automatisch als Niederlage (ELO-Abzug) |
 | GET | `/api/leaderboard` | ELO-Ranking mit Wins/Losses |
 
 ### Anti-Cheat (Solo)
