@@ -6,7 +6,7 @@ import { randomUUID } from "crypto";
 import { supabase, config } from "../config.js";
 import { ok, fail, asyncRoute } from "../lib/http.js";
 import { requireAuth, signAccessToken } from "../middleware/auth.js";
-import { registerSchema, loginSchema, parseBody } from "../middleware/validate.js";
+import { registerSchema, loginSchema, passwordChangeSchema, deleteAccountSchema, parseBody } from "../middleware/validate.js";
 
 export const authRouter = Router();
 
@@ -126,6 +126,69 @@ authRouter.post(
 );
 
 authRouter.get("/me", requireAuth, (req, res) => ok(res, { user: req.user }));
+
+authRouter.put(
+  "/password",
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    const { current_password, new_password } = parseBody(passwordChangeSchema, req.body);
+
+    const { data: stored } = await supabase
+      .from("users")
+      .select("password_hash")
+      .eq("id", req.user.id)
+      .maybeSingle();
+    if (!stored || !(await bcrypt.compare(current_password, stored.password_hash))) {
+      return fail(res, "Aktuelles Passwort ist falsch", 401);
+    }
+
+    const password_hash = await bcrypt.hash(new_password, 12);
+    const { error } = await supabase
+      .from("users")
+      .update({ password_hash })
+      .eq("id", req.user.id);
+    if (error) return fail(res, "Passwort-Änderung fehlgeschlagen", 500);
+
+    // Alle anderen Refresh-Tokens widerrufen, aktuelle Sitzung behalten
+    const currentRefresh = req.cookies?.[REFRESH_COOKIE];
+    if (currentRefresh) {
+      await supabase
+        .from("refresh_tokens")
+        .delete()
+        .eq("user_id", req.user.id)
+        .neq("token", currentRefresh);
+    }
+
+    // Frische Tokens für diese Sitzung ausstellen
+    const access_token = await issueTokens(req.user, res);
+    ok(res, { access_token });
+  }),
+);
+
+authRouter.delete(
+  "/account",
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    const { password } = parseBody(deleteAccountSchema, req.body);
+
+    const { data: stored } = await supabase
+      .from("users")
+      .select("password_hash")
+      .eq("id", req.user.id)
+      .maybeSingle();
+    if (!stored || !(await bcrypt.compare(password, stored.password_hash))) {
+      return fail(res, "Passwort falsch – Konto wurde nicht gelöscht", 401);
+    }
+
+    await supabase.from("refresh_tokens").delete().eq("user_id", req.user.id);
+    // Cascade löscht solo_attempts, matches, battle_queue mit
+    const { error } = await supabase.from("users").delete().eq("id", req.user.id);
+    if (error) return fail(res, "Konto-Löschung fehlgeschlagen", 500);
+
+    res.clearCookie(REFRESH_COOKIE);
+    ok(res, { deleted: true });
+  }),
+);
 
 // fuer JWT-Pruefung im Realtime-Server
 export function verifyToken(token) {

@@ -15,6 +15,7 @@ type AuthContextValue = {
     password: string,
   ) => Promise<string | null>;
   logout: () => Promise<void>;
+  clearSession: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -70,6 +71,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       logout: async () => {
         await api.post("/api/auth/logout");
+        setAccessToken(null);
+        setUser(null);
+      },
+      clearSession: () => {
         setAccessToken(null);
         setUser(null);
       },

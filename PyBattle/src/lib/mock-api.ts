@@ -309,6 +309,48 @@ export async function mockRequest(
     return ok({ user: publicUser(user) });
   }
 
+  if (path === "/api/auth/password" && method === "PUT") {
+    const user = authUser(headers);
+    if (!user) return fail("Nicht eingeloggt", 401);
+    if (String(json.current_password ?? "") !== user.password) {
+      return fail("Aktuelles Passwort ist falsch", 401);
+    }
+    const newPassword = String(json.new_password ?? "");
+    if (newPassword.length < 8) {
+      return fail("new_password: String must contain at least 8 character(s)", 400);
+    }
+    const db = loadDb();
+    const target = db.users.find((u) => u.id === user.id);
+    if (!target) return fail("User nicht gefunden", 401);
+    target.password = newPassword;
+    // Andere Sitzungen abmelden, aktuelle behalten
+    const currentRefresh = localStorage.getItem("pyclash_refresh_token");
+    for (const token of Object.keys(db.refresh)) {
+      if (db.refresh[token] === user.id && token !== currentRefresh) {
+        delete db.refresh[token];
+      }
+    }
+    saveDb(db);
+    return ok({ access_token: tokenFor(target) });
+  }
+
+  if (path === "/api/auth/account" && method === "DELETE") {
+    const user = authUser(headers);
+    if (!user) return fail("Nicht eingeloggt", 401);
+    if (String(json.password ?? "") !== user.password) {
+      return fail("Passwort falsch – Konto wurde nicht gelöscht", 401);
+    }
+    const db = loadDb();
+    db.users = db.users.filter((u) => u.id !== user.id);
+    for (const token of Object.keys(db.refresh)) {
+      if (db.refresh[token] === user.id) delete db.refresh[token];
+    }
+    db.attempts = db.attempts.filter((a) => a.user_id !== user.id);
+    localStorage.removeItem("pyclash_refresh_token");
+    saveDb(db);
+    return ok({ deleted: true });
+  }
+
   if (path === "/api/problems" && method === "GET") {
     const user = authUser(headers);
     const list: ProblemListItem[] = PROBLEMS.map((p) => {
@@ -457,7 +499,7 @@ export async function mockRequest(
     const user = authUser(headers);
     if (!user) return fail("Nicht eingeloggt", 401);
     const db = loadDb();
-    return ok(db.matches.filter((m) => true).slice(0, 20));
+    return ok(db.matches.slice(0, 20));
   }
 
   if (path === "/api/battle/finish" && method === "POST") {

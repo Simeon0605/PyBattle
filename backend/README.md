@@ -34,6 +34,8 @@ Antwortformat immer `{ success: true, data }` / `{ success: false, error }`.
 | POST | `/api/auth/refresh` | Neuer Access-Token via httpOnly-Refresh-Cookie |
 | POST | `/api/auth/logout` | Refresh-Token löschen |
 | GET | `/api/auth/me` | Eigener User (🔒) |
+| PUT | `/api/auth/password` | 🔒 Passwort ändern (aktuelles PW nötig; andere Sessions werden abgemeldet) |
+| DELETE | `/api/auth/account` | 🔒 Konto löschen (PW-Bestätigung; Cascade über Matches/Solo-Attempts) |
 | GET | `/api/problems` | Liste inkl. `solved`/`best_score` (Token optional) |
 | GET | `/api/problems/:id` | Detail + Test-Case-**Anzahl** (nie die Tests selbst) |
 | POST | `/api/solo/start` | 🔒 Server-Timing-Session `{ session_id, problem, started_at }` |

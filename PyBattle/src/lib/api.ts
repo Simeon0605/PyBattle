@@ -80,4 +80,6 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<A
 export const api = {
   get: <T>(url: string) => request<T>(url),
   post: <T>(url: string, body?: unknown) => request<T>(url, { method: "POST", body }),
+  put: <T>(url: string, body?: unknown) => request<T>(url, { method: "PUT", body }),
+  del: <T>(url: string, body?: unknown) => request<T>(url, { method: "DELETE", body }),
 };

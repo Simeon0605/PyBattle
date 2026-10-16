@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Press_Start_2P, Space_Mono, Unbounded } from "next/font/google";
 import { AuthProvider } from "@/components/auth-provider";
+import { CookieNotice } from "@/components/cookie-notice";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
+import { LanguageProvider } from "@/lib/i18n";
 import "./globals.css";
 
 const pixel = Press_Start_2P({
@@ -43,11 +45,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${pixel.variable} ${wide.variable} ${mono.variable} h-full`}
     >
       <body className="flex min-h-full flex-col">
-        <AuthProvider>
+        <LanguageProvider>
+          <AuthProvider>
           <Navbar />
           <div className="flex flex-1 flex-col">{children}</div>
           <Footer />
-        </AuthProvider>
+          <CookieNotice />
+          </AuthProvider>
+        </LanguageProvider>
       </body>
     </html>
   );

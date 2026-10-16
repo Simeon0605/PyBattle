@@ -4,16 +4,39 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "./auth-provider";
+import { useI18n, type Lang } from "@/lib/i18n";
 
-const links = [
-  { href: "/problems", label: "PROBLEME" },
-  { href: "/battle", label: "BATTLE" },
-  { href: "/leaderboard", label: "LIGA" },
-];
+function LangToggle() {
+  const { lang, setLang } = useI18n();
+  return (
+    <span
+      className="inline-flex border border-ink"
+      role="group"
+      aria-label="Sprache / Language"
+    >
+      {(["de", "en"] as const).map((l: Lang) => (
+        <button
+          key={l}
+          type="button"
+          aria-pressed={lang === l}
+          onClick={() => setLang(l)}
+          className={`px-2 py-2 text-[10px] tracking-[0.2em] ${
+            lang === l
+              ? "bg-accent text-white"
+              : "text-ink hover:bg-accent hover:text-white"
+          }`}
+        >
+          {l.toUpperCase()}
+        </button>
+      ))}
+    </span>
+  );
+}
 
 export function Navbar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
 
   // Esc schließt das Menü
@@ -25,6 +48,12 @@ export function Navbar() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
+
+  const links = [
+    { href: "/problems", label: t("nav.problems") },
+    { href: "/battle", label: t("nav.battle") },
+    { href: "/leaderboard", label: t("nav.league") },
+  ];
 
   return (
     <header className="sticky top-0 z-40 border-b border-ink bg-paper">
@@ -57,6 +86,7 @@ export function Navbar() {
         </nav>
 
         <div className="hidden items-center gap-3 text-xs md:flex">
+          <LangToggle />
           {user ? (
             <>
               <Link href="/profile" className="flex items-center gap-2">
@@ -65,21 +95,24 @@ export function Navbar() {
                   {user.elo} ELO
                 </span>
               </Link>
+              <Link href="/settings" className="link-pink py-2">
+                {t("nav.settings")}
+              </Link>
               <button
                 type="button"
                 onClick={() => void logout()}
                 className="btn btn-line px-3 py-2"
               >
-                LOGOUT
+                {t("nav.logout")}
               </button>
             </>
           ) : (
             <>
               <Link href="/login" className="link-pink py-2">
-                LOGIN
+                {t("nav.login")}
               </Link>
               <Link href="/register" className="btn btn-pink px-3 py-2">
-                REGISTRIEREN_
+                {t("nav.register")}
               </Link>
             </>
           )}
@@ -89,7 +122,7 @@ export function Navbar() {
         <button
           type="button"
           className="flex h-11 w-11 flex-col items-center justify-center border border-ink md:hidden"
-          aria-label={open ? "Menü schließen" : "Menü öffnen"}
+          aria-label={open ? t("nav.menu.close") : t("nav.menu.open")}
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
         >
@@ -119,6 +152,9 @@ export function Navbar() {
               {l.label}
             </Link>
           ))}
+          <div className="border-b border-ink px-4 py-4">
+            <LangToggle />
+          </div>
           {user ? (
             <>
               <Link
@@ -128,12 +164,19 @@ export function Navbar() {
               >
                 PROFIL / {user.username} / {user.elo} ELO
               </Link>
+              <Link
+                href="/settings"
+                onClick={() => setOpen(false)}
+                className="block border-b border-ink px-4 py-4 text-xs tracking-[0.2em] text-ink"
+              >
+                {t("nav.settings")}
+              </Link>
               <button
                 type="button"
                 onClick={() => void logout()}
                 className="block w-full border-b border-ink px-4 py-4 text-left text-xs tracking-[0.2em] text-ink"
               >
-                LOGOUT
+                {t("nav.logout")}
               </button>
             </>
           ) : (
@@ -143,14 +186,14 @@ export function Navbar() {
                 onClick={() => setOpen(false)}
                 className="block border-b border-ink px-4 py-4 text-xs tracking-[0.2em] text-ink"
               >
-                LOGIN
+                {t("nav.login")}
               </Link>
               <Link
                 href="/register"
                 onClick={() => setOpen(false)}
                 className="block bg-pink px-4 py-4 text-xs tracking-[0.2em] text-ink"
               >
-                REGISTRIEREN_
+                {t("nav.register")}
               </Link>
             </>
           )}

@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useI18n } from "@/lib/i18n";
 
 export function Footer() {
   const [year, setYear] = useState(2026);
+  const { t } = useI18n();
 
   useEffect(() => {
     const t = setTimeout(() => setYear(new Date().getFullYear()), 0);
@@ -19,16 +21,19 @@ export function Footer() {
         </p>
         <nav className="flex flex-wrap gap-4" aria-label="Footer-Navigation">
           <Link href="/problems" className="link-pink">
-            PROBLEME
+            {t("footer.problems")}
           </Link>
           <Link href="/battle" className="link-pink">
-            BATTLE
+            {t("footer.battle")}
           </Link>
           <Link href="/leaderboard" className="link-pink">
-            LIGA
+            {t("footer.league")}
+          </Link>
+          <Link href="/datenschutz" className="link-pink">
+            {t("footer.privacy")}
           </Link>
           <Link href="/register" className="link-pink">
-            ANMELDEN
+            {t("footer.register")}
           </Link>
         </nav>
         <p>

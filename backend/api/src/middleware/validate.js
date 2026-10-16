@@ -24,6 +24,15 @@ export const soloSubmitSchema = z.object({
   code: z.string().min(1),
 });
 
+export const passwordChangeSchema = z.object({
+  current_password: z.string().min(1),
+  new_password: z.string().min(8),
+});
+
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1),
+});
+
 export function parseBody(schema, body) {
   const result = schema.safeParse(body);
   if (!result.success) {
