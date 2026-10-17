@@ -1,6 +1,5 @@
--- PyClash – Supabase / PostgreSQL Schema
--- In Supabase Dashboard → SQL Editor komplett ausführen.
--- Läuft 1:1 auch auf Neon / Postgres (für die Migration, siehe Branch neon-migration).
+-- PyClash – PostgreSQL Schema (Supabase ODER Neon)
+-- Ausführen: Supabase SQL Editor ODER: psql "$DATABASE_URL" -f db/schema.sql
 
 create extension if not exists "pgcrypto";
 
@@ -628,8 +627,8 @@ insert into test_cases (problem_id, input, expected_output) values
 ('00000000-0000-4000-8000-000000000025', '{"head": [1], "k": 1}', '[1]')
 on conflict do nothing;
 
--- Wichtig: Service-Role-Key des Backends umgeht RLS.
--- Tabellen dennoch absichern, falls Supabase-Auto-API versehentlich aktiv ist:
+-- RLS: Auf Supabase als Schutz falls die Auto-API versehentlich aktiv ist
+-- (das Backend nutzt den Service-Role-Key / auf Neon den Owner-Connection-String).
 alter table users enable row level security;
 alter table problems enable row level security;
 alter table test_cases enable row level security;
