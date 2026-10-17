@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { supabase } from "../config.js";
+import { q, isUuid } from "../lib/db.js";
 import { ok, fail, asyncRoute } from "../lib/http.js";
 import { optionalAuth } from "../middleware/auth.js";
 
@@ -7,15 +7,14 @@ export const problemsRouter = Router();
 
 async function solvedAndBest(userId, problemIds) {
   if (!userId || problemIds.length === 0) return { solved: new Set(), best: new Map() };
-  const { data } = await supabase
-    .from("solo_attempts")
-    .select("problem_id, duration_ms, status")
-    .eq("user_id", userId)
-    .eq("status", "completed")
-    .in("problem_id", problemIds);
+  const rows = await q(
+    `SELECT problem_id, duration_ms FROM solo_attempts
+     WHERE user_id = $1::uuid AND status = 'completed' AND problem_id = ANY($2::uuid[])`,
+    [userId, problemIds],
+  );
   const solved = new Set();
   const best = new Map();
-  for (const row of data ?? []) {
+  for (const row of rows) {
     solved.add(row.problem_id);
     if (row.duration_ms != null) {
       best.set(row.problem_id, Math.min(best.get(row.problem_id) ?? Infinity, row.duration_ms));
@@ -28,15 +27,10 @@ problemsRouter.get(
   "/",
   optionalAuth,
   asyncRoute(async (req, res) => {
-    const { data: problems, error } = await supabase
-      .from("problems")
-      .select("id, title, difficulty")
-      .order("created_at");
-    if (error) return fail(res, "Probleme konnten nicht geladen werden", 500);
-
-    const counts = await supabase.from("test_cases").select("problem_id");
+    const problems = await q("SELECT id, title, difficulty FROM problems ORDER BY created_at");
+    const counts = await q("SELECT problem_id, COUNT(*)::int AS count FROM test_cases GROUP BY problem_id");
     const countMap = {};
-    for (const row of counts.data ?? []) countMap[row.problem_id] = (countMap[row.problem_id] ?? 0) + 1;
+    for (const row of counts) countMap[row.problem_id] = row.count;
 
     const { solved, best } = await solvedAndBest(req.user?.id, problems.map((p) => p.id));
 
@@ -55,17 +49,16 @@ problemsRouter.get(
   "/:id",
   optionalAuth,
   asyncRoute(async (req, res) => {
-    const { data: problem } = await supabase
-      .from("problems")
-      .select("*")
-      .eq("id", req.params.id)
-      .maybeSingle();
+    if (!isUuid(req.params.id)) return fail(res, "Problem nicht gefunden", 404);
+    const rows = await q("SELECT * FROM problems WHERE id = $1::uuid", [req.params.id]);
+    const problem = rows[0];
     if (!problem) return fail(res, "Problem nicht gefunden", 404);
 
-    const { count } = await supabase
-      .from("test_cases")
-      .select("id", { count: "exact", head: true })
-      .eq("problem_id", problem.id);
+    const countRows = await q(
+      "SELECT COUNT(*)::int AS count FROM test_cases WHERE problem_id = $1::uuid",
+      [problem.id],
+    );
+    const count = countRows[0]?.count ?? 0;
 
     const { solved, best } = await solvedAndBest(req.user?.id, [problem.id]);
 
@@ -77,7 +70,7 @@ problemsRouter.get(
       starter_code: problem.starter_code,
       example_input: problem.example_input,
       example_output: problem.example_output,
-      test_case_count: count ?? 0,
+      test_case_count: count,
       solved: solved.has(problem.id),
       best_score: best.get(problem.id) ?? null,
     });

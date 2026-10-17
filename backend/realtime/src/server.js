@@ -1,5 +1,6 @@
 import { Server } from "socket.io";
-import { config, supabase, verifyToken } from "./config.js";
+import { config, verifyToken } from "./config.js";
+import { q } from "./lib/db.js";
 import { BattleManager } from "./battle-manager.js";
 import { runTests } from "./services/piston.js";
 import { applyElo } from "./services/elo.js";
@@ -19,18 +20,15 @@ io.use((socket, next) => {
   }
 });
 
-const manager = new BattleManager(supabase, config, { runTests, applyElo });
+const manager = new BattleManager(q, config, { runTests, applyElo });
 
 io.on("connection", (socket) => {
   socket.emit("connected", { user_id: socket.user.id });
 
   socket.on("queue:join", async (cb) => {
     try {
-      const { data: user } = await supabase
-        .from("users")
-        .select("id, username, elo")
-        .eq("id", socket.user.id)
-        .single();
+      const userRows = await q("SELECT id, username, elo FROM users WHERE id = $1::uuid", [socket.user.id]);
+      const user = userRows[0];
       if (!user) return cb?.({ success: false, error: "User nicht gefunden" });
 
       const result = await manager.enqueue(socket, user);

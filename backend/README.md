@@ -1,27 +1,35 @@
-# PyClash Backend
+# PyClash Backend (Branch `neon-migration`)
 
-Das Backend besteht aus **zwei eigenständigen Diensten**, beide nutzen **Supabase (PostgreSQL)** als Datenbank:
+Das Backend besteht aus **zwei eigenständigen Diensten**, beide nutzen **Neon (PostgreSQL)** als Datenbank:
 
 ```
 backend/
 ├── api/        Express REST-API  (Port 4000) – Auth, Problems, Solo, Leaderboard, Battle-History
 └── realtime/   Socket.io-Server  (Port 4001) – Matchmaking, Live-Battles, ELO
+db/
+└── schema.sql  Komplettes DB-Schema + 25 LeetCode-Probleme (in Neon ausführen)
 supabase/
-└── schema.sql  Komplettes DB-Schema + Seed-Probleme (im Supabase SQL Editor ausführen)
+└── schema.sql  Gleicher Stand für den Supabase-Branch `main`
 ```
 
-## Setup
+## Setup (Neon)
 
-1. **Supabase**: Projekt anlegen → SQL Editor → Inhalt von `supabase/schema.sql` ausführen.
-2. **.env anlegen** (in beiden Ordnern, Vorlage: `.env.example`):
-   - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (Supabase → Settings → API; Service-Role-Key **nur** im Backend!)
+1. **Neon**: Projekt anlegen (Region z. B. `eu-central-1`) → Dashboard → Connection String kopieren (idealerweise die **pooled**-Variante).
+2. **Schema anlegen**:
+   - Neon Dashboard → SQL Editor → Inhalt von `db/schema.sql` ausführen, **oder**
+   - `psql "$DATABASE_URL" -f db/schema.sql`
+3. **Prüfen**: `cd backend/api`, `.env` mit `DATABASE_URL` anlegen, dann `npm install && npm run check:db` → muss `✓ Datenbank bereit` melden (25 Probleme, Test-Cases vorhanden).
+4. **.env anlegen** (in beiden Ordnern, Vorlage: `.env.example`):
+   - `DATABASE_URL` (Neon-Connection-String)
    - `JWT_SECRET` (langer Zufallsstring, in **beiden** Ordnern identisch)
-3. Installieren & starten:
+5. Installieren & starten:
 
 ```bash
 cd backend/api && npm install && npm run dev        # REST-API auf :4000
 cd backend/realtime && npm install && npm run dev   # Battles auf :4001
 ```
+
+> **Hinweis:** Der API-Vertrag ist identisch zum Supabase-Stand auf `main` – das Frontend braucht keine Änderung, nur `NEXT_PUBLIC_USE_MOCK=false`.
 
 ## REST-API (`backend/api`)
 
@@ -54,7 +62,7 @@ Antwortformat immer `{ success: true, data }` / `{ success: false, error }`.
 - Ein Submit pro Session, außer vorheriger Submit war ein Compile-Error.
 
 ### Sicherheit
-helmet, CORS (nur `CLIENT_ORIGIN`), express-rate-limit (120 req/min global, 5 Logins/min), bcrypt (12 Runden), JWT Access-Token 15 min + Refresh-Token 30 Tage in httpOnly/secure/sameSite-strict Cookie, Zod-Validierung, Supabase-Client (kein SQL-Concatenation), Refresh-Tokens serverseitig in DB (widerrufbar).
+helmet, CORS (nur `CLIENT_ORIGIN`), express-rate-limit (120 req/min global, 5 Logins/min), bcrypt (12 Runden), JWT Access-Token 15 min + Refresh-Token 30 Tage in httpOnly/secure/sameSite-strict Cookie, Zod-Validierung, parametrisierte SQL-Queries über `pg` (keine String-Concatenation), UUID-Formatprüfung vor DB-Zugriff, Refresh-Tokens serverseitig in DB (widerrufbar).
 
 ## Realtime (`backend/realtime`)
 
@@ -69,10 +77,10 @@ Socket.io-Events (Auth via `auth: { token: "<access_token>" }` beim Verbinden):
 | Server → Client | `battle:event` | `BattleEvent` (opponent_fail/win/loss/timeout) |
 | Server → Client | `battle:end` | `{ match_id, winner_id }` |
 
-Matchmaking paart Spieler mit ähnlichem ELO (±200, wächst um +10/s Wartezeit). Disconnect = Aufgabe; Sieger-ELO wird sofort in Supabase aktualisiert.
+Matchmaking paart Spieler mit ähnlichem ELO (±200, wächst um +10/s Wartezeit). Disconnect = Aufgabe; Sieger-ELO wird sofort in Neon aktualisiert. Client kann zudem `battle:forfeit` senden (Aufgeben = Niederlage).
 
-## Deployment (Free Tier)
-- API: Render (Root `backend/api`, Start: `node src/server.js`)
-- Realtime: Render (Root `backend/realtime`) – WebSockets aktivieren
-- Supabase: Free (500 MB Postgres)
+## Deployment (Free Tier, Branch `neon-migration`)
+- API: Render (Root `backend/api`, Start: `node src/server.js`) – Env: `DATABASE_URL`, `JWT_SECRET`, `CLIENT_ORIGIN`
+- Realtime: Render (Root `backend/realtime`) – WebSockets aktivieren, gleiche Envs
+- Neon: Free Tier (0,5 GB) – Connection String **pooled** verwenden
 - Frontend: Vercel, `NEXT_PUBLIC_API_URL` und `NEXT_PUBLIC_USE_MOCK=false` setzen

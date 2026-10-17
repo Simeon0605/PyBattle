@@ -1,8 +1,8 @@
 import { randomUUID } from "crypto";
 
 export class BattleManager {
-  constructor(supabase, config, { runTests, applyElo }) {
-    this.supabase = supabase;
+  constructor(db, config, { runTests, applyElo }) {
+    this.db = db;
     this.config = config;
     this.runTests = runTests;
     this.applyElo = applyElo;
@@ -32,30 +32,28 @@ export class BattleManager {
   }
 
   async createMatch(a, b) {
-    const problemIds = (await this.supabase.from("problems").select("id")).data ?? [];
+    const problemIds = await this.db("SELECT id FROM problems");
     const problemId = problemIds[Math.floor(Math.random() * problemIds.length)]?.id;
-    const { data: problem } = await this.supabase.from("problems").select("*").eq("id", problemId).maybeSingle();
-    const { count } = await this.supabase
-      .from("test_cases")
-      .select("id", { count: "exact", head: true })
-      .eq("problem_id", problemId);
+    if (!problemId) throw new Error("Keine Probleme in der Datenbank");
+    const problemRows = await this.db("SELECT * FROM problems WHERE id = $1::uuid", [problemId]);
+    const problem = problemRows[0];
+    const countRows = await this.db(
+      "SELECT COUNT(*)::int AS count FROM test_cases WHERE problem_id = $1::uuid",
+      [problemId],
+    );
+    const count = countRows[0]?.count ?? 0;
 
-    const { data: match, error } = await this.supabase
-      .from("matches")
-      .insert({
-        player1_id: a.user.id,
-        player2_id: b.user.id,
-        problem_id: problemId,
-        started_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-    if (error) throw error;
+    const matchRows = await this.db(
+      `INSERT INTO matches (player1_id, player2_id, problem_id, started_at)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4) RETURNING *`,
+      [a.user.id, b.user.id, problemId, new Date().toISOString()],
+    );
+    const match = matchRows[0];
 
     const battle = {
       id: match.id,
       problem,
-      testTotal: count ?? 0,
+      testTotal: count,
       startedAt: Date.now(),
       timeLimitMs: this.config.timeLimitMs,
       players: {
@@ -75,7 +73,7 @@ export class BattleManager {
             starter_code: problem.starter_code,
             example_input: problem.example_input,
             example_output: problem.example_output,
-            test_case_count: count ?? 0,
+            test_case_count: count,
           },
           opponent: { username: battle.players[opponentId].username, elo: battle.players[opponentId].elo },
           started_at: match.started_at,
@@ -99,12 +97,12 @@ export class BattleManager {
     const player = battle.players[userId];
     if (player.finished) return { error: "Bereits abgeschlossen" };
 
-    const { data: testCases } = await this.supabase
-      .from("test_cases")
-      .select("input, expected_output")
-      .eq("problem_id", battle.problem.id);
+    const testCases = await this.db(
+      "SELECT input, expected_output FROM test_cases WHERE problem_id = $1::uuid",
+      [battle.problem.id],
+    );
 
-    const result = await this.runTests(code, testCases ?? [], this.entryFunctionOf(battle.problem.starter_code));
+    const result = await this.runTests(code, testCases, this.entryFunctionOf(battle.problem.starter_code));
     player.lastCompileError = Boolean(result.compile_error);
 
     if (!result.correct) {
@@ -122,34 +120,39 @@ export class BattleManager {
     return this.finish(battle, userId);
   }
 
+  async forfeit(userId) {
+    const battle = this.matches.get(userId);
+    if (!battle || battle.players[userId].finished) return { error: "Kein aktives Match" };
+    // Aufgeben = automatische Niederlage, Sieger ist der Gegner
+    const opponentId = Object.keys(battle.players).find((id) => id !== userId);
+    await this.finish(battle, opponentId);
+    return { forfeited: true };
+  }
+
   async finish(battle, winnerId) {
     clearTimeout(battle.timeout);
     const [p1, p2] = Object.values(battle.players);
-    const { data: users } = await this.supabase
-      .from("users")
-      .select("id, elo")
-      .in("id", [p1.id, p2.id]);
-    const u1 = users.find((u) => u.id === p1.id);
-    const u2 = users.find((u) => u.id === p2.id);
+    const userRows = await this.db("SELECT id, elo FROM users WHERE id = ANY($1::uuid[])", [
+      [p1.id, p2.id],
+    ]);
+    const u1 = userRows.find((u) => u.id === p1.id);
+    const u2 = userRows.find((u) => u.id === p2.id);
     const elo = this.applyElo(u1, u2, winnerId);
 
-    await this.supabase.from("users").update({ elo: elo.player1_new_elo }).eq("id", p1.id);
-    await this.supabase.from("users").update({ elo: elo.player2_new_elo }).eq("id", p2.id);
-    await this.supabase
-      .from("matches")
-      .update({
-        winner_id: winnerId,
-        finished_at: new Date().toISOString(),
-        duration_ms: Date.now() - battle.startedAt,
-        player1_elo_change: elo.player1_elo_change,
-        player2_elo_change: elo.player2_elo_change,
-      })
-      .eq("id", battle.id);
+    await this.db("UPDATE users SET elo = $2 WHERE id = $1::uuid", [p1.id, elo.player1_new_elo]);
+    await this.db("UPDATE users SET elo = $2 WHERE id = $1::uuid", [p2.id, elo.player2_new_elo]);
+    await this.db(
+      `UPDATE matches
+       SET winner_id = $2::uuid, finished_at = $3, duration_ms = $4,
+           player1_elo_change = $5, player2_elo_change = $6
+       WHERE id = $1::uuid`,
+      [battle.id, winnerId, new Date().toISOString(), Date.now() - battle.startedAt, elo.player1_elo_change, elo.player2_elo_change],
+    );
 
     for (const player of [p1, p2]) {
       this.matches.delete(player.id);
       const won = player.id === winnerId;
-      const change = won ? (player.id === p1.id ? elo.player1_elo_change : elo.player2_elo_change) : (player.id === p1.id ? elo.player1_elo_change : elo.player2_elo_change);
+      const change = player.id === p1.id ? elo.player1_elo_change : elo.player2_elo_change;
       player.socket.emit("battle:event", {
         type: won ? "win" : "loss",
         message: won ? "Du hast gewonnen!" : "Du hast verloren.",
@@ -159,15 +162,6 @@ export class BattleManager {
       player.socket.emit("battle:end", { match_id: battle.id, winner_id: winnerId });
     }
     return { winnerId, elo };
-  }
-
-  async forfeit(userId) {
-    const battle = this.matches.get(userId);
-    if (!battle || battle.players[userId].finished) return { error: "Kein aktives Match" };
-    // Aufgeben = automatische Niederlage, Sieger ist der Gegner
-    const opponentId = Object.keys(battle.players).find((id) => id !== userId);
-    await this.finish(battle, opponentId);
-    return { forfeited: true };
   }
 
   async finishByTimeout(battle) {

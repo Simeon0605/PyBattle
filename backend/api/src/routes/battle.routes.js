@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { supabase } from "../config.js";
+import { q, isUuid } from "../lib/db.js";
 import { ok, fail, asyncRoute } from "../lib/http.js";
 import { requireAuth } from "../middleware/auth.js";
 import { applyElo } from "../services/elo.js";
@@ -11,15 +11,16 @@ battleRouter.use(requireAuth);
 battleRouter.post(
   "/queue",
   asyncRoute(async (req, res) => {
-    const { error } = await supabase
-      .from("battle_queue")
-      .upsert({ user_id: req.user.id, joined_at: new Date().toISOString(), elo_at_join: req.user.elo });
-    if (error) return fail(res, "Queue-Beitritt fehlgeschlagen", 500);
+    await q(
+      `INSERT INTO battle_queue (user_id, joined_at, elo_at_join)
+       VALUES ($1::uuid, $2, $3)
+       ON CONFLICT (user_id) DO UPDATE
+         SET joined_at = EXCLUDED.joined_at, elo_at_join = EXCLUDED.elo_at_join`,
+      [req.user.id, new Date().toISOString(), req.user.elo],
+    );
 
-    const { count } = await supabase
-      .from("battle_queue")
-      .select("user_id", { count: "exact", head: true });
-    ok(res, { queued: true, players_waiting: count ?? 1 });
+    const countRows = await q("SELECT COUNT(*)::int AS count FROM battle_queue");
+    ok(res, { queued: true, players_waiting: countRows[0]?.count ?? 1 });
   }),
 );
 
@@ -27,24 +28,24 @@ battleRouter.get(
   "/history",
   asyncRoute(async (req, res) => {
     const uid = req.user.id;
-    const { data: matches, error } = await supabase
-      .from("matches")
-      .select("*")
-      .or(`player1_id.eq.${uid},player2_id.eq.${uid}`)
-      .order("finished_at", { ascending: false })
-      .limit(50);
-    if (error) return fail(res, "Historie konnte nicht geladen werden", 500);
+    const matches = await q(
+      `SELECT * FROM matches
+       WHERE player1_id = $1::uuid OR player2_id = $1::uuid
+       ORDER BY finished_at DESC
+       LIMIT 50`,
+      [uid],
+    );
 
     const opponentIds = matches.map((m) => (m.player1_id === uid ? m.player2_id : m.player1_id));
-    const { data: opponents } = opponentIds.length
-      ? await supabase.from("users").select("id, username").in("id", opponentIds)
-      : { data: [] };
-    const nameMap = new Map((opponents ?? []).map((u) => [u.id, u.username]));
+    const opponents = opponentIds.length
+      ? await q("SELECT id, username FROM users WHERE id = ANY($1::uuid[])", [opponentIds])
+      : [];
+    const nameMap = new Map(opponents.map((u) => [u.id, u.username]));
     const problemIds = [...new Set(matches.map((m) => m.problem_id).filter(Boolean))];
-    const { data: problems } = problemIds.length
-      ? await supabase.from("problems").select("id, title").in("id", problemIds)
-      : { data: [] };
-    const titleMap = new Map((problems ?? []).map((p) => [p.id, p.title]));
+    const problems = problemIds.length
+      ? await q("SELECT id, title FROM problems WHERE id = ANY($1::uuid[])", [problemIds])
+      : [];
+    const titleMap = new Map(problems.map((p) => [p.id, p.title]));
 
     ok(res, matches.map((m) => {
       const isP1 = m.player1_id === uid;
@@ -65,35 +66,33 @@ battleRouter.post(
   "/finish",
   asyncRoute(async (req, res) => {
     const { match_id } = req.body ?? {};
-    if (!match_id) return fail(res, "match_id erforderlich", 400);
+    if (!match_id || !isUuid(match_id)) return fail(res, "match_id erforderlich", 400);
 
-    const { data: match } = await supabase.from("matches").select("*").eq("id", match_id).maybeSingle();
+    const matchRows = await q("SELECT * FROM matches WHERE id = $1::uuid", [match_id]);
+    const match = matchRows[0];
     if (!match) return fail(res, "Match nicht gefunden", 404);
     if (match.winner_id) return fail(res, "Match bereits abgeschlossen", 400);
     if (match.player1_id !== req.user.id && match.player2_id !== req.user.id) {
       return fail(res, "Nicht Teilnehmer des Matches", 403);
     }
 
-    const { data: users } = await supabase
-      .from("users")
-      .select("id, elo")
-      .in("id", [match.player1_id, match.player2_id]);
-    const [p1, p2] = users;
+    const userRows = await q("SELECT id, elo FROM users WHERE id = ANY($1::uuid[])", [
+      [match.player1_id, match.player2_id],
+    ]);
+    const p1 = userRows.find((u) => u.id === match.player1_id);
+    const p2 = userRows.find((u) => u.id === match.player2_id);
     const { player1_elo_change, player2_elo_change, player1_new_elo, player2_new_elo } = applyElo(p1, p2, req.user.id);
 
-    await supabase.from("users").update({ elo: player1_new_elo }).eq("id", p1.id);
-    await supabase.from("users").update({ elo: player2_new_elo }).eq("id", p2.id);
-    await supabase
-      .from("matches")
-      .update({
-        winner_id: req.user.id,
-        finished_at: new Date().toISOString(),
-        duration_ms: Date.now() - new Date(match.started_at).getTime(),
-        player1_elo_change,
-        player2_elo_change,
-      })
-      .eq("id", match_id);
-    await supabase.from("battle_queue").delete().in("user_id", [p1.id, p2.id]);
+    await q("UPDATE users SET elo = $2 WHERE id = $1::uuid", [p1.id, player1_new_elo]);
+    await q("UPDATE users SET elo = $2 WHERE id = $1::uuid", [p2.id, player2_new_elo]);
+    await q(
+      `UPDATE matches
+       SET winner_id = $2::uuid, finished_at = $3, duration_ms = $4,
+           player1_elo_change = $5, player2_elo_change = $6
+       WHERE id = $1::uuid`,
+      [match_id, req.user.id, new Date().toISOString(), Date.now() - new Date(match.started_at).getTime(), player1_elo_change, player2_elo_change],
+    );
+    await q("DELETE FROM battle_queue WHERE user_id = ANY($1::uuid[])", [[p1.id, p2.id]]);
 
     ok(res, { winner_id: req.user.id, player1_elo_change, player2_elo_change });
   }),
@@ -103,9 +102,10 @@ battleRouter.post(
   "/forfeit",
   asyncRoute(async (req, res) => {
     const { match_id } = req.body ?? {};
-    if (!match_id) return fail(res, "match_id erforderlich", 400);
+    if (!match_id || !isUuid(match_id)) return fail(res, "match_id erforderlich", 400);
 
-    const { data: match } = await supabase.from("matches").select("*").eq("id", match_id).maybeSingle();
+    const matchRows = await q("SELECT * FROM matches WHERE id = $1::uuid", [match_id]);
+    const match = matchRows[0];
     if (!match) return fail(res, "Match nicht gefunden", 404);
     if (match.winner_id) return fail(res, "Match bereits abgeschlossen", 400);
     if (match.player1_id !== req.user.id && match.player2_id !== req.user.id) {
@@ -114,26 +114,23 @@ battleRouter.post(
 
     // Aufgeben = automatische Niederlage, Sieger ist der Gegner
     const winnerId = match.player1_id === req.user.id ? match.player2_id : match.player1_id;
-    const { data: users } = await supabase
-      .from("users")
-      .select("id, elo")
-      .in("id", [match.player1_id, match.player2_id]);
-    const [p1, p2] = users;
+    const userRows = await q("SELECT id, elo FROM users WHERE id = ANY($1::uuid[])", [
+      [match.player1_id, match.player2_id],
+    ]);
+    const p1 = userRows.find((u) => u.id === match.player1_id);
+    const p2 = userRows.find((u) => u.id === match.player2_id);
     const { player1_elo_change, player2_elo_change, player1_new_elo, player2_new_elo } = applyElo(p1, p2, winnerId);
 
-    await supabase.from("users").update({ elo: player1_new_elo }).eq("id", p1.id);
-    await supabase.from("users").update({ elo: player2_new_elo }).eq("id", p2.id);
-    await supabase
-      .from("matches")
-      .update({
-        winner_id: winnerId,
-        finished_at: new Date().toISOString(),
-        duration_ms: Date.now() - new Date(match.started_at).getTime(),
-        player1_elo_change,
-        player2_elo_change,
-      })
-      .eq("id", match_id);
-    await supabase.from("battle_queue").delete().in("user_id", [p1.id, p2.id]);
+    await q("UPDATE users SET elo = $2 WHERE id = $1::uuid", [p1.id, player1_new_elo]);
+    await q("UPDATE users SET elo = $2 WHERE id = $1::uuid", [p2.id, player2_new_elo]);
+    await q(
+      `UPDATE matches
+       SET winner_id = $2::uuid, finished_at = $3, duration_ms = $4,
+           player1_elo_change = $5, player2_elo_change = $6
+       WHERE id = $1::uuid`,
+      [match_id, winnerId, new Date().toISOString(), Date.now() - new Date(match.started_at).getTime(), player1_elo_change, player2_elo_change],
+    );
+    await q("DELETE FROM battle_queue WHERE user_id = ANY($1::uuid[])", [[p1.id, p2.id]]);
 
     ok(res, {
       forfeited: true,
@@ -148,20 +145,15 @@ export const leaderboardRouter = Router();
 leaderboardRouter.get(
   "/",
   asyncRoute(async (_req, res) => {
-    const { data: users, error } = await supabase
-      .from("users")
-      .select("id, username, elo")
-      .order("elo", { ascending: false })
-      .limit(100);
-    if (error) return fail(res, "Leaderboard konnte nicht geladen werden", 500);
+    const users = await q("SELECT id, username, elo FROM users ORDER BY elo DESC LIMIT 100");
 
     const ids = users.map((u) => u.id);
-    const { data: matches } = ids.length
-      ? await supabase.from("matches").select("player1_id, player2_id, winner_id").in("winner_id", ids)
-      : { data: [] };
+    const matches = ids.length
+      ? await q("SELECT player1_id, player2_id, winner_id FROM matches WHERE winner_id = ANY($1::uuid[])", [ids])
+      : [];
 
     const stats = new Map(ids.map((id) => [id, { wins: 0, losses: 0 }]));
-    for (const m of matches ?? []) {
+    for (const m of matches) {
       if (stats.has(m.winner_id)) stats.get(m.winner_id).wins += 1;
       const loser = m.winner_id === m.player1_id ? m.player2_id : m.player1_id;
       if (stats.has(loser)) stats.get(loser).losses += 1;
