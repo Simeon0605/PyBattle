@@ -3,7 +3,8 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
 import { randomUUID } from "crypto";
-import { supabase, config } from "../config.js";
+import { config } from "../config.js";
+import { q, isUuid } from "../lib/db.js";
 import { ok, fail, asyncRoute } from "../lib/http.js";
 import { requireAuth, signAccessToken } from "../middleware/auth.js";
 import { registerSchema, loginSchema, passwordChangeSchema, deleteAccountSchema, parseBody } from "../middleware/validate.js";
@@ -34,10 +35,10 @@ async function issueTokens(user, res) {
   const access = signAccessToken(user);
   const refresh = randomUUID();
   const expires = new Date(Date.now() + config.refreshDays * 24 * 60 * 60 * 1000);
-  const { error } = await supabase
-    .from("refresh_tokens")
-    .insert({ token: refresh, user_id: user.id, expires_at: expires.toISOString() });
-  if (error) throw new Error("Token-Erstellung fehlgeschlagen");
+  await q(
+    "INSERT INTO refresh_tokens (token, user_id, expires_at) VALUES ($1::uuid, $2::uuid, $3)",
+    [refresh, user.id, expires.toISOString()],
+  );
   setRefreshCookie(res, refresh);
   return access;
 }
@@ -47,20 +48,17 @@ authRouter.post(
   asyncRoute(async (req, res) => {
     const { username, email, password } = parseBody(registerSchema, req.body);
 
-    const { data: existing } = await supabase
-      .from("users")
-      .select("id")
-      .or(`email.eq.${email},username.eq.${username}`)
-      .maybeSingle();
-    if (existing) return fail(res, "Username oder E-Mail bereits vergeben", 400);
+    const existing = await q("SELECT id FROM users WHERE email = $1 OR username = $2 LIMIT 1", [email, username]);
+    if (existing[0]) return fail(res, "Username oder E-Mail bereits vergeben", 400);
 
     const password_hash = await bcrypt.hash(password, 12);
-    const { data: user, error } = await supabase
-      .from("users")
-      .insert({ username, email, password_hash })
-      .select("id, username, email, elo, created_at")
-      .single();
-    if (error) return fail(res, "Registrierung fehlgeschlagen", 500);
+    const rows = await q(
+      `INSERT INTO users (username, email, password_hash)
+       VALUES ($1, $2, $3)
+       RETURNING id, username, email, elo, created_at`,
+      [username, email, password_hash],
+    );
+    const user = rows[0];
 
     const access_token = await issueTokens(user, res);
     ok(res, { access_token, user }, 201);
@@ -73,11 +71,8 @@ authRouter.post(
   asyncRoute(async (req, res) => {
     const { email, password } = parseBody(loginSchema, req.body);
 
-    const { data: user } = await supabase
-      .from("users")
-      .select("*")
-      .eq("email", email)
-      .maybeSingle();
+    const rows = await q("SELECT * FROM users WHERE email = $1 LIMIT 1", [email]);
+    const user = rows[0];
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       return fail(res, "E-Mail oder Passwort falsch", 401);
     }
@@ -91,23 +86,20 @@ authRouter.post(
   "/refresh",
   asyncRoute(async (req, res) => {
     const refresh = req.cookies?.[REFRESH_COOKIE];
-    if (!refresh) return fail(res, "Refresh-Token ungültig", 401);
+    if (!refresh || !isUuid(refresh)) return fail(res, "Refresh-Token ungültig", 401);
 
-    const { data: stored } = await supabase
-      .from("refresh_tokens")
-      .select("user_id, expires_at")
-      .eq("token", refresh)
-      .maybeSingle();
+    const storedRows = await q("SELECT user_id, expires_at FROM refresh_tokens WHERE token = $1::uuid", [refresh]);
+    const stored = storedRows[0];
     if (!stored || new Date(stored.expires_at) < new Date()) {
-      if (stored) await supabase.from("refresh_tokens").delete().eq("token", refresh);
+      if (stored) await q("DELETE FROM refresh_tokens WHERE token = $1::uuid", [refresh]);
       return fail(res, "Refresh-Token ungültig/abgelaufen", 401);
     }
 
-    const { data: user } = await supabase
-      .from("users")
-      .select("id, username, email, elo, created_at")
-      .eq("id", stored.user_id)
-      .single();
+    const userRows = await q(
+      "SELECT id, username, email, elo, created_at FROM users WHERE id = $1::uuid",
+      [stored.user_id],
+    );
+    const user = userRows[0];
     if (!user) return fail(res, "User nicht gefunden", 401);
 
     const access_token = await issueTokens(user, res);
@@ -119,7 +111,7 @@ authRouter.post(
   "/logout",
   asyncRoute(async (req, res) => {
     const refresh = req.cookies?.[REFRESH_COOKIE];
-    if (refresh) await supabase.from("refresh_tokens").delete().eq("token", refresh);
+    if (refresh && isUuid(refresh)) await q("DELETE FROM refresh_tokens WHERE token = $1::uuid", [refresh]);
     res.clearCookie(REFRESH_COOKIE);
     ok(res, { ok: true });
   }),
@@ -133,30 +125,22 @@ authRouter.put(
   asyncRoute(async (req, res) => {
     const { current_password, new_password } = parseBody(passwordChangeSchema, req.body);
 
-    const { data: stored } = await supabase
-      .from("users")
-      .select("password_hash")
-      .eq("id", req.user.id)
-      .maybeSingle();
+    const storedRows = await q("SELECT password_hash FROM users WHERE id = $1::uuid", [req.user.id]);
+    const stored = storedRows[0];
     if (!stored || !(await bcrypt.compare(current_password, stored.password_hash))) {
       return fail(res, "Aktuelles Passwort ist falsch", 401);
     }
 
     const password_hash = await bcrypt.hash(new_password, 12);
-    const { error } = await supabase
-      .from("users")
-      .update({ password_hash })
-      .eq("id", req.user.id);
-    if (error) return fail(res, "Passwort-Änderung fehlgeschlagen", 500);
+    await q("UPDATE users SET password_hash = $2 WHERE id = $1::uuid", [req.user.id, password_hash]);
 
     // Alle anderen Refresh-Tokens widerrufen, aktuelle Sitzung behalten
     const currentRefresh = req.cookies?.[REFRESH_COOKIE];
     if (currentRefresh) {
-      await supabase
-        .from("refresh_tokens")
-        .delete()
-        .eq("user_id", req.user.id)
-        .neq("token", currentRefresh);
+      await q(
+        "DELETE FROM refresh_tokens WHERE user_id = $1::uuid AND token <> $2::uuid",
+        [req.user.id, currentRefresh],
+      );
     }
 
     // Frische Tokens für diese Sitzung ausstellen
@@ -171,19 +155,15 @@ authRouter.delete(
   asyncRoute(async (req, res) => {
     const { password } = parseBody(deleteAccountSchema, req.body);
 
-    const { data: stored } = await supabase
-      .from("users")
-      .select("password_hash")
-      .eq("id", req.user.id)
-      .maybeSingle();
+    const storedRows = await q("SELECT password_hash FROM users WHERE id = $1::uuid", [req.user.id]);
+    const stored = storedRows[0];
     if (!stored || !(await bcrypt.compare(password, stored.password_hash))) {
       return fail(res, "Passwort falsch – Konto wurde nicht gelöscht", 401);
     }
 
-    await supabase.from("refresh_tokens").delete().eq("user_id", req.user.id);
+    await q("DELETE FROM refresh_tokens WHERE user_id = $1::uuid", [req.user.id]);
     // Cascade löscht solo_attempts, matches, battle_queue mit
-    const { error } = await supabase.from("users").delete().eq("id", req.user.id);
-    if (error) return fail(res, "Konto-Löschung fehlgeschlagen", 500);
+    await q("DELETE FROM users WHERE id = $1::uuid", [req.user.id]);
 
     res.clearCookie(REFRESH_COOKIE);
     ok(res, { deleted: true });
