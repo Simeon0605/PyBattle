@@ -42,8 +42,10 @@ function serialize(value) {
   if (Array.isArray(value)) return `[${value.map(serialize).join(", ")}]`;
   if (typeof value === "string") return JSON.stringify(value);
   if (typeof value === "object") {
+    // Python-Dict-Literal: Schluessel IMMER als String (bare keys waeren
+    // in Python Variablenzugriffe -> NameError).
     const entries = Object.entries(value).map(
-      ([key, val]) => `${/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ? key : JSON.stringify(key)}: ${serialize(val)}`,
+      ([key, val]) => `${JSON.stringify(key)}: ${serialize(val)}`,
     );
     return `{${entries.join(", ")}}`;
   }
@@ -65,30 +67,38 @@ export async function runTests(code, testCases, entryFunction) {
 
   for (const tc of testCases) {
     const callCode = `${HARNESS_PREFIX}\n${code}\n\n_pyclash_run(${entryFunction}, ${serialize(tc.input)})\n`;
+    let result;
     try {
-      const result = await execute(callCode);
-      const error = errorOf(result);
-      if (error) {
-        compileError = error;
-        break;
-      }
-      // Der Harness gibt genau eine JSON-Zeile aus – Debug-Prints des Users
-      // landen davor und werden ignoriert.
-      const stdoutLines = (result.run?.stdout ?? "")
-        .split("\n")
-        .map((l) => l.trim())
-        .filter(Boolean);
-      const actual = stdoutLines[stdoutLines.length - 1] ?? "";
-      // expected_output liegt in der DB als exakter JSON-Text vor
-      // (Format wie json.dumps) – direkter Vergleich, kein Re-Serialize.
-      const expected = String(tc.expected_output ?? "").trim();
-      if (actual === expected) {
-        passed += 1;
-      } else {
-        details.push({ expected, actual });
-      }
+      result = await execute(callCode);
     } catch (err) {
-      details.push({ expected: String(tc.expected_output ?? ""), actual: err.message });
+      // Piston selbst nicht erreichbar (z. B. 401 whitelist-only, Netzwerk)
+      // -> klarer Fehler statt stummem Durchfallen aller Tests.
+      return {
+        compile_error: `Piston nicht erreichbar: ${err.message}`,
+        tests_passed: 0,
+        tests_total: testCases.length,
+        correct: false,
+      };
+    }
+    const error = errorOf(result);
+    if (error) {
+      compileError = error;
+      break;
+    }
+    // Der Harness gibt genau eine JSON-Zeile aus – Debug-Prints des Users
+    // landen davor und werden ignoriert.
+    const stdoutLines = (result.run?.stdout ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const actual = stdoutLines[stdoutLines.length - 1] ?? "";
+    // expected_output liegt in der DB als exakter JSON-Text vor
+    // (Format wie json.dumps) – direkter Vergleich, kein Re-Serialize.
+    const expected = String(tc.expected_output ?? "").trim();
+    if (actual === expected) {
+      passed += 1;
+    } else {
+      details.push({ expected, actual });
     }
   }
 

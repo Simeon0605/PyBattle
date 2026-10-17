@@ -105,6 +105,12 @@ delete from problems where id in (
   '55555555-5555-5555-5555-555555555555'
 );
 
+-- Idempotenz: Test-Cases der LC-Probleme vor dem Neu-Einfügen entfernen
+-- (verhindert Duplikate, wenn dieses Skript erneut ausgeführt wird)
+delete from test_cases where problem_id in (
+  select id from problems where id like '00000000-0000-4000-8000-%'
+);
+
 -- ── LC 1: Two Sum ──
 insert into problems (id, title, description, difficulty, starter_code, example_input, example_output) values
 ('00000000-0000-4000-8000-000000000001', 'Two Sum',
